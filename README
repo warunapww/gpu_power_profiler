@@ -1,0 +1,80 @@
+Compiling
+
+First you need to install papi library.
+Then set the library directory and the library name when compiling. See the 
+attached Makefile.
+Also set the nvml library in Makefile.
+
+Read the comments in "high_resolution_power.h" file for the usage instructions.
+
+Here are some sample usages.
+
+This is the call_cuda_kernel function for Jacobi1D
+//-------------------------------------------------------------------------------------------------------------------------------------
+void *call_gpu_functions(void *nothing) {
+  temp1 = 0;
+  temp2 = 0;
+  temp3 = 0;
+  temp4 = 0;
+  dim3 dimBlock(BlockWidth);
+  for(kernelCall=1; kernelCall <= totalKernelCalls ; kernelCall++){
+
+      width = computeWidth(S,T,kernelCall*TileSize-1);
+      dim3 dimGrid(width);
+      if(kernelCall >= S/TileSize + 1){
+
+          if((totalKernelCalls-kernelCall)%2 == 0){
+            jacobiKernel_8_type3<<<dimGrid, dimBlock>>>(device_A, device_temp1, device_temp2, S, T, kernelCall, width, totalKernelCalls);
+            cudaCheckKernel();
+            temp3++;
+
+          }
+          else{
+            jacobiKernel_8_type4<<<dimGrid, dimBlock>>>(device_A, device_temp1, device_temp2, S, T, kernelCall, width, totalKernelCalls);
+            cudaCheckKernel();
+            temp4++;
+
+          }
+      }
+      else{
+          if(kernelCall <= 2*T/TileSize -1 and kernelCall%2 == 1){
+            jacobiKernel_8_type1<<<dimGrid, dimBlock>>>(device_A, device_temp1, device_temp2, S, T, kernelCall, width, totalKernelCalls);
+            cudaCheckKernel();
+            temp1++;
+
+          }
+          else{
+            jacobiKernel_8_type2<<<dimGrid, dimBlock>>>(device_A, device_temp1, device_temp2, S, T, kernelCall, width, totalKernelCalls);
+            cudaCheckKernel();
+            temp2++;
+
+          }
+      }
+    }
+    cudaDeviceSynchronize();
+
+    return NULL;
+}
+//---------------------------------------------------------------------------------------------------------------------------------------
+
+This is the reset_kenel_data function for Smith Waterman
+//-------------------------------------------------------------------------------------------------------------------------------------
+void *gpu_data_reset(void *nothing) {
+  CUDA_CHECK_RETURN(cudaMemset((void *)dABH, 0, sizeof(int)*(lenA+lenB)));
+  CUDA_CHECK_RETURN(cudaMemset((void *)dABEF, 0, sizeof(int)*(lenA+lenB)));
+  CUDA_CHECK_RETURN(cudaMemset((void *)dCorner, 0, sizeof(int)*3*tilesPerBlock)); 
+  return NULL;
+}
+//-------------------------------------------------------------------------------------------------------------------------------------
+
+Now, instead of calling actual cuda kernels, you can call "call_gpu_functions" 
+
+To measure time:
+  long long elapsed1 = get_exec_time_in_nanoseconds(call_gpu_functions, gpu_data_reset);
+  
+To profile power:
+  high_resolution_power_profile(call_gpu_functions, gpu_data_reset);
+
+The output power profile will be writen to the stdout.
+
+   
