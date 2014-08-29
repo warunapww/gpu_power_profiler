@@ -12,6 +12,7 @@
 #include <pthread.h>
 
 #include "high_resolution_power.h"
+#include "gpu_heater.h"
 
 #define CEIL(x,y) 1 + (((x) - 1) / (y))
 
@@ -131,13 +132,39 @@ int nvml_init() {
 
 
 int power_profile(void *(*call_cuda_kernel)(void*), void *(*reset_kenel_data)(void*)) {
-  struct timespec sleep_time;
-  sleep_time.tv_sec = sleep_time_after_kernel_call;
-  sleep_time.tv_nsec = 0;
+  //struct timespec sleep_time;
+//  sleep_time.tv_sec = sleep_time_after_kernel_call;
+//  sleep_time.tv_nsec = 0;
+
+	//warming the gpu
+	unsigned int temperature;
+	nvmlDeviceGetTemperature(nvml_device, NVML_TEMPERATURE_GPU, &temperature);
+	printf("#Warming up the GPU. Starting temp: %u C\n", temperature);
+		
+	long long heatup_start_time = PAPI_get_real_nsec();
+	
+	init_heater();
+//	nvmlReturn_t nvml_result;
+	do {
+		heatup_gpu();
+
+		nvmlDeviceGetTemperature(nvml_device, NVML_TEMPERATURE_GPU, &temperature);
+/*		if (NVML_SUCCESS != nvml_result)
+		{
+			printf("Failed to get temperature of the device %i: %s\n", device_id, nvmlErrorString(nvml_result));
+		}
+*/
+	} while (temperature < 68);
+
+	shutdown_heater();
+
+	printf("#Warming up the GPU to 68 C is done. Elapsed time: %fs\n",
+(PAPI_get_real_nsec()-heatup_start_time)/1E9);
 
   pthread_t pthread;
 
-	reps = CEIL(7E9, kernel_execution_time);
+	//reps = CEIL(7E9, kernel_execution_time);
+	reps = CEIL(10E9, kernel_execution_time);
 	
 	printf("#RREPS: %d\n", reps);
 
@@ -175,7 +202,6 @@ int power_profile(void *(*call_cuda_kernel)(void*), void *(*reset_kenel_data)(vo
 		while (time_current < time_start_kernel + kernel_execution_time)
 		{
 			long long time_running_update;
-      unsigned int temperature;
       int pstate;
 			unsigned int gpu_power = synchronizeTime(time_running_update, nvml_device, temperature, pstate);
 
